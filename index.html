@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=320, user-scalable=0, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <title>example: record & play</title>
+  <style type='text/css'>
+    .bar {
+      float: left;
+      border: solid 0px gray;
+      background-color: blue;
+      height: 0px;
+      margin-top: 100px;
+      width: 5px;
+    }
+    .barContainer {
+      overflow: hidden;
+      border: solid 1px gray;
+    }
+    /* clearfix */
+    .barContainer:before,
+    .barContainer:after {
+      content: "";
+      display: table;
+    }
+    .barContainer:after {
+      clear: both;
+    }
+  </style>
+  <script src="lib/recorder.js"></script>
+  <script>
+    var BUFFER_SIZE = 4096;
+    var GRAPH_SIZE = 20*2;
+    var audio_context;
+    var recorder;
+    var recording = false;
+    var volumes = [];
+
+    function startUserMedia(stream) {
+      var input = audio_context.createMediaStreamSource(stream);
+      var scriptProcessor = audio_context.createScriptProcessor(BUFFER_SIZE, 1, 1);
+      input.connect(scriptProcessor);
+      scriptProcessor.connect(audio_context.destination);
+
+      scriptProcessor.onaudioprocess = function(e) {
+        var channelData = e.inputBuffer.getChannelData(0);
+        var m = Math.max.apply(null, channelData);
+        var v = Math.floor(Math.abs(m) * 100);
+        volumes.unshift(v);
+        volumes = volumes.slice(0, GRAPH_SIZE-1);
+        drawGraph();
+      };
+    
+      recorder = new Recorder(input);
+    }
+
+    function onButtonClick(button) {
+      if (recording) {
+        recording = false;
+        button.innerHTML = 'record';
+        recorder && recorder.stop();
+        play();
+        recorder.clear();
+      } else {
+        recording = true;
+        button.innerHTML = 'stop';
+        recorder && recorder.record();
+      }
+    }
+
+    function play() {
+      recorder && recorder.exportWAV(function(blob) {
+        var url = URL.createObjectURL(blob);
+        var au = document.createElement('audio');
+        au.controls = true;
+        au.src = url;
+        au.play();
+      });
+    }
+
+    function initializeGraph() {
+      var barGraph = document.getElementById('barGraph');
+      for (var i = GRAPH_SIZE - 1; i >= 0 ; i--) {
+        var div = document.createElement('div');
+        div.id = 'bar' + i;
+        div.classList.add('bar');
+        barGraph.appendChild(div)
+      }
+    }
+
+    function drawGraph() {
+      for (var i = 0; i < GRAPH_SIZE; i++) {
+        var v = volumes[i] ? volumes[i] : 0;
+        var b = document.getElementById('bar' + i);
+        b.style.height = v + 'px';
+        b.style.marginTop = (100-v) + 'px';
+      }
+    }
+
+    window.onload = function init() {
+      try {
+        // webkit shim
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia;
+        window.URL = window.URL || window.webkitURL;
+      
+        audio_context = new AudioContext;
+      } catch (e) {
+        alert('No web audio support in this browser!');
+      }
+    
+      initializeGraph();
+      navigator.getUserMedia({audio: true}, startUserMedia, function(e) {});
+    };
+  </script>
+</head>
+<body>
+  <h1>example: record & play</h1>
+  <div class="barContainer" id="barGraph"></div>
+  <button onclick="onButtonClick(this);">record</button>
+</body>
+</html>
